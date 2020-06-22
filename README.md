@@ -1,5 +1,5 @@
 # Wavefunctions
-This code calculates the eigen energies in an arbitrary 1D potential profile, by discretizing the Shcrodinger's equation.
+This code calculates the eigen energies in an arbitrary 1D potential profile, by discretizing the Schrodinger's equation.
 
 ## Instructions: 
 1. Have [Eigen](http://eigen.tuxfamily.org/index.php?title=Main_Page) installed 
