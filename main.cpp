@@ -8,13 +8,90 @@
 using namespace std;
 using namespace Eigen;
 
+/* constants, global variables */
+double hbar = 1.054571628e-34; // Planck's constant [J.s]
+double m0 = 9.109389e-31;      // electron effective mass [kg]
+double eV = 1.602177e-19;      // electron volt [J]
+
+double GetMin(vector <double> aVector)
+{
+    /* returns the minimum value in a vector */
+    double minV = 200;
+    for (int i=0; i<aVector.size(); i++){
+        if (minV > aVector[i])
+        {
+            minV = aVector[i];
+        }
+    }
+    return minV;
+}
+
+double GetMax(vector <double> aVector)
+{
+    /* returns the maximum value in a vector */
+    double maxV = 0;
+    for (int i=0; i<aVector.size(); i++){
+        if (maxV < aVector[i])
+        {
+            maxV = aVector[i];
+        }
+    }
+    return maxV;
+}
+
+MatrixXd ConstructHamiltonian(vector <double> m_z, vector <double> Vcrystal, double del_z, int Npts)
+{
+    /* returns the Hamiltonian that will be solved */
+    MatrixXd Hamiltonian(Npts-2,Npts-2);
+    vector <double> mL, mR, mM;
+    vector <double> ai, bi, ci;
+    mL.assign(Npts-2, 0);
+    mR.assign(Npts-2, 0);
+    mM.assign(Npts-2, 0);
+    ai.assign(Npts-2, 0);
+    bi.assign(Npts-2, 0);
+    ci.assign(Npts-2, 0);
+
+    for (int i = 0; i <= Npts-3; i++) {
+        mL[i] = m_z[i] + m_z[i+1];
+        mR[i] = m_z[i+1] + m_z[i+2];
+        mM[i] = 1/((1/mL[i]) + (1/mR[i]));
+    }
+
+    for (int i = 0; i <= Npts - 3; i++) {
+        ai[i] = -pow(hbar,2) / (mL[i] * pow(del_z, 2));
+        ci[i] = -pow(hbar, 2) / (mR[i] * pow(del_z, 2));
+        bi[i] = (pow(hbar, 2) / (mM[i] * pow(del_z, 2))) + Vcrystal[i + 1];
+    }
+
+    for (int i = 0; i < Npts - 2; i++) // assigns zero to all elements of matrix Hamiltonian
+    {
+        for (int j = 0; j < Npts - 2; j++)
+        {
+            Hamiltonian(i, j) = 0;
+        }
+    }
+    for (int i = 0; i <= Npts - 3; i++)
+    {
+        Hamiltonian(i, i) = bi[i]; // place on diagonal
+    }
+    for (int i = 1; i <= Npts - 3; i++)
+    {
+        Hamiltonian(i, i - 1) = ai[i]; // place on lower diagonal
+    }
+
+    for (int i = 0; i <= Npts - 4; i++)
+    {
+        Hamiltonian(i, i + 1) = ci[i];  // place on upper diagonal
+    }
+
+    return Hamiltonian;
+}
+
+
+
 int main()
 {
-    /* constants */
-    double hbar = 1.054571628e-34; // Planck's constant [J.s]
-    double m0 = 9.109389e-31;      // electron effective mass [kg]
-    double eV = 1.602177e-19;      // electron volt [J]
-
     /*  define the design parameters */
     double Al_frac = 0.2;
     double elec_field = 0;
@@ -49,29 +126,18 @@ int main()
         z[i] = z[i - 1] + del_z;
     }
 
-    // define the Al fraction profile, effective mass profile, and the potential profile,
-    // and then calculate the elements of the Hamiltonian matrix which is to be solved
+    // define the Al fraction profile, effective mass profile, and the potential profile
     vector <double> m_z;
-    vector <double> mL, mR, mM;
-    vector <double> ai, bi, ci;
     vector <double> Vcrystal;
     vector <double> Al_frac_z;
-    MatrixXd Hamiltonian(Npts-2,Npts-2);
 
-    double zeroV;
     double left = 0;
     double right = bw[0];
 
     Vcrystal.assign(Npts, 0);
     m_z.assign(Npts, 0);
-    mL.assign(Npts-2, 0);
-    mR.assign(Npts-2, 0);
-    mM.assign(Npts-2, 0);
-    ai.assign(Npts-2, 0);
-    bi.assign(Npts-2, 0);
-    ci.assign(Npts-2, 0);
 
-    // define the Al fraction as a function of the z coordinate
+
     Al_frac_z.assign(Npts, 0);
     for (int j = 0; j <= bw_length-2; j++)
     {
@@ -100,69 +166,35 @@ int main()
 
     }
 
-    /* Make it so that the potential profile starts at zero */
-    // find the minimum
-    zeroV = Vcrystal[0];
-    for (int i = 0; i < Npts; i++) {
-        if (zeroV > Vcrystal[i]) {
-            zeroV = Vcrystal[i];
-        }
-    }
-    // adjust the profile
+    // Make it so that the potential profile starts at zero */
+    double zeroV = GetMin(Vcrystal);
     for (int i = 0; i < Npts; i++) {
         Vcrystal[i] = Vcrystal[i] - zeroV;
     }
     Vcrystal[Npts - 1] = Vcrystal[0]; // for easier convergence, make the last point equal to the first
 
 
+    
     /* construct the Hamiltonian which will be solved for */
-    for (int i = 0; i <= Npts-3; i++) {
-        mL[i] = m_z[i] + m_z[i+1];
-        mR[i] = m_z[i+1] + m_z[i+2];
-        mM[i] = 1/((1/mL[i]) + (1/mR[i]));
-    }
+    MatrixXd Hamiltonian = ConstructHamiltonian(m_z, Vcrystal, del_z, Npts);
 
-    for (int i = 0; i <= Npts - 3; i++) {
-        ai[i] = -pow(hbar,2) / (mL[i] * pow(del_z, 2));
-        ci[i] = -pow(hbar, 2) / (mR[i] * pow(del_z, 2));
-        bi[i] = (pow(hbar, 2) / (mM[i] * pow(del_z, 2))) + Vcrystal[i + 1];
-    }
-
-    for (int i = 0; i < Npts - 2; i++)
-    {
-        for (int j = 0; j < Npts - 2; j++)
-        {
-            Hamiltonian(i, j) = 0;
-        }
-    }
-    for (int i = 0; i <= Npts - 3; i++)
-    {
-        Hamiltonian(i, i) = bi[i]; // on the diagonal
-    }
-    for (int i = 1; i <= Npts - 3; i++)
-    {
-        Hamiltonian(i, i - 1) = ai[i]; // lower diagonal
-    }
-
-    for (int i = 0; i <= Npts - 4; i++)
-    {
-        Hamiltonian(i, i + 1) = ci[i];  // upper diagonal
-    }
-
+    /* Call on the eigen solver*/
     cout << "calling eigen solver" << endl;
     EigenSolver<MatrixXd> eig;
     eig.compute(Hamiltonian);
     VectorXd eigen_vals = eig.eigenvalues().real();
     VectorXd eigen_energies(eigen_vals.size());
 
-    double maxV = 0.65 * (1.36 + 0.22 * Al_frac) * Al_frac * eV;
-    double minV = 0;
 
-    /* print results */
+
+    /* determine which eigenvalues are the eigen energies of interest, print results */
+    double maxV = GetMax(Vcrystal); // get maximum of Vcrystal
+    double minV = 0; // minimum of Vcrystal is zero, since we have zeroed it above
+
     cout << "these are the eigen energies in [eV]" << endl;
     for (int i = 0; i < eigen_vals.size(); i++)
     {
-        if ((eigen_vals(i) < maxV) & (eigen_vals(i) > minV))
+        if ((eigen_vals(i) < maxV) & (eigen_vals(i) > minV)) // only accept eigen values that are within the potential well
         {
             eigen_energies(i) = eigen_vals(i);
             cout << eigen_energies(i)/eV << ", ";
